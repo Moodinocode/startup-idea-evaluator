@@ -5,9 +5,32 @@ const openai = new OpenAI({
   apiKey: config.openai.apiKey
 });
 
+// Caps on incoming text, so a huge payload can't turn into a huge token bill.
+const MAX_DESCRIPTION_LENGTH = 4000;
+const MAX_FIELD_LENGTH = 200;
+
 const evaluateIdea = async (req, res) => {
   try {
     const { description, location, audience, pricingModel, industry } = req.body;
+
+    if (typeof description !== 'string' || !description.trim()) {
+      return res.status(400).json({ message: 'A startup idea description is required.' });
+    }
+
+    if (description.length > MAX_DESCRIPTION_LENGTH) {
+      return res.status(400).json({
+        message: `Description is too long (max ${MAX_DESCRIPTION_LENGTH} characters).`
+      });
+    }
+
+    const shortFields = { location, audience, pricingModel, industry };
+    for (const [name, value] of Object.entries(shortFields)) {
+      if (value != null && (typeof value !== 'string' || value.length > MAX_FIELD_LENGTH)) {
+        return res.status(400).json({
+          message: `${name} must be text of at most ${MAX_FIELD_LENGTH} characters.`
+        });
+      }
+    }
 
     const prompt = `This is my startup idea what do you think about it?
 
@@ -68,7 +91,7 @@ const evaluateIdea = async (req, res) => {
 
             You MUST return only a valid JSON object. Do not include any commentary or explanation outside the JSON
           
-          Make sure to be accurate and provide a detailed evaluation. Its not about being nice its about being honest and helpful nd giving valuable feedback.
+          Make sure to be accurate and provide a detailed evaluation. It's not about being nice, it's about being honest and helpful and giving valuable feedback.
           `
 
 
@@ -85,28 +108,40 @@ const evaluateIdea = async (req, res) => {
     // Parse the response and ensure it matches our expected format
     const evaluation = JSON.parse(completion.choices[0].message.content);
 
-    // Validate the response structure
-    const requiredFields = [
-      'successScore', 'strengths', 'weaknesses', 'marketPotential',
-      'competition', 'locationInsights', 'improvements', 'monetization',
-      'mvpSuggestion'
-    ];
+    // Validate the response structure. Check the shape rather than truthiness:
+    // a legitimate score of 0 is falsy, and the client maps over the array
+    // fields, so a string arriving where an array belongs would crash it.
+    const arrayFields = ['strengths', 'weaknesses', 'improvements', 'monetization'];
+    const stringFields = ['marketPotential', 'competition', 'locationInsights', 'mvpSuggestion'];
 
-    for (const field of requiredFields) {
-      if (!evaluation[field]) {
-        throw new Error(`Missing required field: ${field}`);
+    const score = Number(evaluation.successScore);
+    if (!Number.isFinite(score)) {
+      throw new Error('Model returned a non-numeric successScore');
+    }
+
+    for (const field of arrayFields) {
+      if (!Array.isArray(evaluation[field])) {
+        throw new Error(`Expected ${field} to be an array`);
+      }
+      evaluation[field] = evaluation[field].map(String);
+    }
+
+    for (const field of stringFields) {
+      if (typeof evaluation[field] !== 'string') {
+        throw new Error(`Expected ${field} to be a string`);
       }
     }
 
     // Ensure successScore is a number between 0 and 100
-    evaluation.successScore = Math.min(100, Math.max(0, Number(evaluation.successScore)));
+    evaluation.successScore = Math.min(100, Math.max(0, score));
 
     res.json(evaluation);
   } catch (error) {
+    // Logged in full server-side; the client gets a generic message so that
+    // provider errors (quota, org details, model names) are not exposed.
     console.error('Error evaluating idea:', error);
-    res.status(500).json({ 
-      message: 'Error evaluating startup idea',
-      error: error.message 
+    res.status(500).json({
+      message: 'Error evaluating startup idea. Please try again.'
     });
   }
 };

@@ -32,6 +32,17 @@ interface Evaluation {
   mvpSuggestion: string;
 }
 
+// Keep in step with MAX_DESCRIPTION_LENGTH on the server.
+const MAX_DESCRIPTION_LENGTH = 4000;
+
+// Join without assuming whether VITE_API_URL carries a trailing slash.
+const evaluateEndpoint = `${(import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "")}/api/evaluate-idea`;
+
+// The evaluation comes from a language model, so treat the list fields as
+// untrusted: render nothing rather than crashing if one arrives malformed.
+const asList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.map(String) : [];
+
 const Index = () => {
   const [formData, setFormData] = useState<IdeaForm>({
     description: "",
@@ -57,7 +68,7 @@ const Index = () => {
     setIsLoading(true);
     setEvaluation(null);
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}api/evaluate-idea`, formData);
+      const response = await axios.post(evaluateEndpoint, formData);
       setEvaluation(response.data);
       toast({
         title: "Analysis Complete! 🎉",
@@ -145,8 +156,12 @@ const Index = () => {
                       value={formData.description}
                       onChange={(e) => setFormData({...formData, description: e.target.value})}
                       className="min-h-32 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                      maxLength={MAX_DESCRIPTION_LENGTH}
                       required
                     />
+                    <p className="text-xs text-gray-500 text-right">
+                      {formData.description.length} / {MAX_DESCRIPTION_LENGTH}
+                    </p>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-6">
@@ -293,7 +308,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3">
-                    {evaluation.strengths.map((strength, index) => (
+                    {asList(evaluation.strengths).map((strength, index) => (
                       <li key={index} className="flex items-start space-x-2">
                         <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
                         <span className="text-gray-700">{strength}</span>
@@ -313,7 +328,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3">
-                    {evaluation.weaknesses.map((weakness, index) => (
+                    {asList(evaluation.weaknesses).map((weakness, index) => (
                       <li key={index} className="flex items-start space-x-2">
                         <div className="w-2 h-2 bg-orange-500 rounded-full mt-2 flex-shrink-0"></div>
                         <span className="text-gray-700">{weakness}</span>
@@ -375,7 +390,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {evaluation.improvements.map((improvement, index) => (
+                    {asList(evaluation.improvements).map((improvement, index) => (
                       <li key={index} className="flex items-start space-x-2">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
                         <span className="text-gray-700">{improvement}</span>
@@ -394,7 +409,7 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {evaluation.monetization.map((idea, index) => (
+                    {asList(evaluation.monetization).map((idea, index) => (
                       <li key={index} className="flex items-start space-x-2">
                         <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
                         <span className="text-gray-700">{idea}</span>

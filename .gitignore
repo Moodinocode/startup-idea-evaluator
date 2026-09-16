@@ -1,8 +1,20 @@
-# Ignore environment variables
+# Environment variables
 .env
 .env.*
+!.env.example
 **/.env
+**/.env.*
+!**/.env.example
 
-# Ignore node modules
+# Dependencies
 node_modules/
 **/node_modules/
+
+# Build output
+dist/
+**/dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
